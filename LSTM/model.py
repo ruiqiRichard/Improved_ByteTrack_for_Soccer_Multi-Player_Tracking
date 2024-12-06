@@ -31,7 +31,7 @@ class LSTMTracker:
 
         # Define the LSTM model
         self.model = Sequential([
-            LSTM(lstm_units, input_shape=(seq_length, input_dim), return_sequences=False),
+            LSTM(lstm_units, input_shape=(seq_length, input_dim), return_sequences=True),
             Dense(output_dim)
         ])
         

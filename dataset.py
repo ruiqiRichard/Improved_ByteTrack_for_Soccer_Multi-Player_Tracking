@@ -16,7 +16,7 @@ class DataLoader():
             # Handle the error appropriately, maybe by setting a default directory or halting execution gracefully.
 
         # Data directory where the pre-processed pickle file resides
-        self.data_dir = './data'
+        self.data_dir = './Dataset'
 
         # Store the batch size and the sequence length arguments
         self.batch_size = batch_size
@@ -42,7 +42,6 @@ class DataLoader():
         current_vehicle = 0
         # For each dataset
         for directory in data_dirs:
-            # Adjust the file path for your new CSV files
             file_path = os.path.join(directory, 'vehicle_data_1.csv')
             print("Processing {}".format(file_path))
 
