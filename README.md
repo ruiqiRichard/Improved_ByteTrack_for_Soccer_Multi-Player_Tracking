@@ -1,3 +1,45 @@
+# Improved ByteTrack for Soccer Multi-Player Tracking
+This is an improved version of ByteTrack for player tracking in soccer games, built upon SoocerNettracking dataset.
+
+### Prerequisite
+Make sure CUDA and CUDNN are properly installed and related environment variables are properly set. 
+Verified versions are anaconda3-5.1.0 + CUDA 10.0.130 + CUDNN 7.6.5 on Ubuntu 20.04.3 LTS. 
+
+### Run inference for each sequence
+```
+    export ByteTrack_HOME=<ByteTrack_HOME>
+    cd <ByteTrack_HOME>
+    export SN_TRACKING_MODE=test
+    bash run_bytetrack_gt_batch.sh
+```
+To run challenge you should set the environment variable differently:
+```
+    export SN_TRACKING_MODE=challenge
+```
+
+### Evaluate locally
+
+Generate gt.zip needed for evaluation
+```
+    python tools/zip_gt.py -f <SN_TRACKING_HOME>/test/
+
+```
+
+Run evaluation.
+
+```
+pip install git+https://github.com/JonathonLuiten/TrackEval.git
+
+python tools/evaluate_soccernet_v3_tracking.py \
+--TRACKERS_FOLDER_ZIP soccernet_mot_results.zip \
+--GT_FOLDER_ZIP gt.zip \
+--BENCHMARK SNMOT --DO_PREPROC False \
+--SEQMAP_FILE tools/SNMOT-test.txt \
+--TRACKERS_TO_EVAL test \
+--SPLIT_TO_EVAL test \
+--OUTPUT_SUB_FOLDER eval_results
+```
+
 # ByteTrack
 
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/bytetrack-multi-object-tracking-by-1/multi-object-tracking-on-mot17)](https://paperswithcode.com/sota/multi-object-tracking-on-mot17?p=bytetrack-multi-object-tracking-by-1)
