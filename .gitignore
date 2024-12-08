@@ -1,7 +1,9 @@
 /Dataset
 /build
 yolox/_C.cpython-311-darwin.so
+yolox/_C.cp312-win_amd64.pyd
 yolox.egg-info
 /pretrained
 __pycache__
 /tracking
+YOLOX_outputs

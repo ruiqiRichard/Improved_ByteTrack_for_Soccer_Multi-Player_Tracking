@@ -4,6 +4,8 @@ import os.path as osp
 import time
 import cv2
 import torch
+import json
+import pickle
 
 from loguru import logger
 
@@ -14,6 +16,7 @@ from yolox.utils.visualize import plot_tracking
 from yolox.tracker.byte_tracker import BYTETracker
 from yolox.tracking_utils.timer import Timer
 
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 IMAGE_EXT = [".jpg", ".jpeg", ".webp", ".bmp", ".png"]
 
@@ -175,7 +178,7 @@ class Predictor(object):
         return outputs, img_info
 
 
-def image_demo(predictor, vis_folder, current_time, args):
+def image_demo(predictor, vis_folder, det_folder, current_time, args):
     if osp.isdir(args.path):
         files = get_image_list(args.path)
     else:
@@ -186,11 +189,34 @@ def image_demo(predictor, vis_folder, current_time, args):
     results = []
 
     seq_name = args.path.split('/')[-2]
+    
+    os.makedirs(det_folder, exist_ok=True)
 
     for frame_id, img_path in enumerate(files, 1):
-        import pdb
+        # import pdb
         # pdb.set_trace()
-        outputs, img_info = predictor.inference(img_path, timer)
+        
+        snmot_name = img_path.split('/')[-2]  # e.g., SNMOT-116
+        outputs_folder = osp.join(det_folder, snmot_name)
+        os.makedirs(outputs_folder, exist_ok=True)
+        
+        output_file = osp.join(outputs_folder, osp.basename(img_path) + ".pkl")
+        if osp.exists(output_file):
+            # Load outputs if already saved
+            with open(output_file, 'rb') as f:
+                data = pickle.load(f)
+                outputs = data['outputs']
+                img_info = data['img_info']
+            logger.info(f"Loaded detection outputs for {img_path}")
+        else:
+            # Perform inference and save the result
+            outputs, img_info = predictor.inference(img_path, timer)
+            with open(output_file, 'wb') as f:
+                pickle.dump({'outputs': outputs, 'img_info': img_info}, f)
+            logger.info(f"Saved detection outputs for {img_path}")
+        
+        # outputs, img_info = predictor.inference(img_path, timer)
+        # print(img_path)
         if outputs[0] is not None:
             online_targets = tracker.update(outputs[0], [img_info['height'], img_info['width']], exp.test_size)
             online_tlwhs = []
@@ -369,8 +395,9 @@ def main(exp, args):
 
     predictor = Predictor(model, exp, trt_file, decoder, args.device, args.fp16)
     current_time = time.localtime()
+    det_folder = osp.join(output_dir, "yolox_dets")
     if args.demo == "image":
-        image_demo(predictor, vis_folder, current_time, args)
+        image_demo(predictor, vis_folder, det_folder, current_time, args)
     elif args.demo == "video" or args.demo == "webcam":
         imageflow_demo(predictor, vis_folder, current_time, args)
 

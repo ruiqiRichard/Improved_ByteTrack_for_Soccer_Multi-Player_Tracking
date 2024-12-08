@@ -5,6 +5,15 @@ This is an improved version of ByteTrack for player tracking in soccer games, bu
 Make sure CUDA and CUDNN are properly installed and related environment variables are properly set. 
 Verified versions are anaconda3-5.1.0 + CUDA 10.0.130 + CUDNN 7.6.5 on Ubuntu 20.04.3 LTS. 
 
+### MOT20 test model
+
+Train on CrowdHuman and MOT20, evaluate on MOT20 train. Download this pretrained model and put it under /pretrained.
+
+
+| Model    |  MOTA | IDF1 | IDs | FPS |
+|------------|-------|------|------|------|
+|bytetrack_x_mot20 [[google]](https://drive.google.com/file/d/1HX2_JpMOjOIj1Z9rJjoet9XNy_cCAs5U/view?usp=sharing), [[baidu(code:3apd)]](https://pan.baidu.com/s/1bowJJj0bAnbhEQ3_6_Am0A) | 93.4 | 89.3 | 1057 | 17.5 |
+
 ### Run inference for each sequence
 ```
     export ByteTrack_HOME=<ByteTrack_HOME>
