@@ -4,3 +4,4 @@ yolox/_C.cpython-311-darwin.so
 yolox.egg-info
 /pretrained
 __pycache__
+/tracking
