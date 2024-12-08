@@ -69,6 +69,37 @@ def ious(atlbrs, btlbrs):
 
     return ious
 
+def diou(atlbrs, btlbrs):
+    """
+    Compute DIOU between two sets of boxes
+    :type atlbrs: list[tlbr] | np.ndarray
+    :type btlbrs: list[tlbr] | np.ndarray
+    :rtype: np.ndarray
+    """
+    atlbrs = np.asarray(atlbrs, dtype=np.float64)
+    btlbrs = np.asarray(btlbrs, dtype=np.float64)
+    
+    _ious = bbox_ious(
+        np.ascontiguousarray(atlbrs, dtype=np.float64),
+        np.ascontiguousarray(btlbrs, dtype=np.float64)
+    )
+    dious = np.zeros((len(atlbrs), len(btlbrs)), dtype=np.float64)
+    
+    atlbrs_centers = (atlbrs[:, :2] + atlbrs[:, 2:]) / 2  
+    btlbrs_centers = (btlbrs[:, :2] + btlbrs[:, 2:]) / 2  
+
+    for i in range(len(atlbrs)):
+        for j in range(len(btlbrs)):
+            center_dist = np.sqrt(np.sum((atlbrs_centers[i] - btlbrs_centers[j]) ** 2))
+            enclosing_mins = np.minimum(atlbrs[i, :2], btlbrs[j, :2])
+            enclosing_maxs = np.maximum(atlbrs[i, 2:], btlbrs[j, 2:])
+            enclosing_diag = np.sqrt(np.sum((enclosing_maxs - enclosing_mins) ** 2))
+            if enclosing_diag > 0: 
+                dious[i, j] = _ious[i, j] - (center_dist ** 2) / (enclosing_diag ** 2)
+            else:
+                dious[i, j] = _ious[i, j]
+    return dious 
+
 
 def iou_distance(atracks, btracks):
     """
@@ -87,6 +118,25 @@ def iou_distance(atracks, btracks):
         btlbrs = [track.tlbr for track in btracks]
     _ious = ious(atlbrs, btlbrs)
     cost_matrix = 1 - _ious
+
+    return cost_matrix
+
+def diou_distance(atracks, btracks):
+    """
+    Compute cost based on DIOU
+    :type atracks: list[STrack] or np.ndarray
+    :type btracks: list[STrack] or np.ndarray
+    :rtype: cost_matrix np.ndarray
+    """
+
+    if (len(atracks) > 0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
+        atlbrs = atracks
+        btlbrs = btracks
+    else:
+        atlbrs = [track.tlbr for track in atracks]
+        btlbrs = [track.tlbr for track in btracks]
+    _dious = diou(atlbrs, btlbrs)
+    cost_matrix = 1 - _dious
 
     return cost_matrix
 
