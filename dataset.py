@@ -10,7 +10,7 @@ class DataLoader:
     DataLoader for ByteTrack-style multi-object tracking data.
     """
 
-    def __init__(self, batch_size=50, seq_length=10, datasets=[0], forcePreProcess=False):
+    def __init__(self, batch_size=50, seq_length=10, datasets=[0], forcePreProcess=False, train = True):
         """
         Initialize the DataLoader.
 
@@ -20,34 +20,36 @@ class DataLoader:
         - datasets: list, indices of datasets to use (corresponding to self.data_dirs).
         - forcePreProcess: bool, force reprocessing of data even if preprocessed data exists.
         """
-        self.data_dirs = ['./Dataset/tracking']
+        self.data_dirs = ['../Dataset/tracking']
 
         try:
             self.used_data_dirs = [self.data_dirs[x] for x in datasets]
         except IndexError as e:
             raise ValueError(f"An index in 'datasets' is out of range: {e}")
 
-        self.data_dir = './Dataset/tracking'
+        self.data_dir = '../Dataset/tracking'
         self.batch_size = batch_size
         self.seq_length = seq_length
+        self.width = 1920
+        self.height = 1080
 
         # Ensure that the train.zip is unzipped
-        self.extracted_dir = os.path.join(self.data_dir, "temp_extracted")
-        zip_path = os.path.join(self.data_dir, 'train.zip')
+        # self.extracted_dir = os.path.join(self.data_dir, "temp_extracted")
+        # zip_path = os.path.join(self.data_dir, 'train.zip')
 
-        if not os.path.exists(self.extracted_dir):
-            if os.path.exists(zip_path):
-                print(f"Extracting {zip_path}...")
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(self.extracted_dir)
-            else:
-                raise FileNotFoundError(f"{zip_path} not found. Ensure the file exists.")
+        # if not os.path.exists(self.extracted_dir):
+        #     if os.path.exists(zip_path):
+        #         print(f"Extracting {zip_path}...")
+        #         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        #             zip_ref.extractall(self.extracted_dir)
+        #     else:
+        #         raise FileNotFoundError(f"{zip_path} not found. Ensure the file exists.")
 
-        data_file = os.path.join(self.data_dir, "trajectories.cpkl")
+        data_file = os.path.join(self.data_dir, "trajectories_train.cpkl") if train else os.path.join(self.data_dir, "trajectories_test.cpkl")
 
         if not os.path.exists(data_file) or forcePreProcess:
             print("Creating pre-processed data from raw data")
-            self.preprocess([self.extracted_dir], data_file)
+            self.preprocess([os.path.join(self.data_dir, "train") if train else os.path.join(self.data_dir, "test")], data_file)
 
         self.load_preprocessed(data_file)
         self.reset_batch_pointer()
@@ -78,10 +80,11 @@ class DataLoader:
                             # Process tracking data
                             for track_id in np.unique(data[:, 1]):  # Unique track IDs
                                 track_data = data[data[:, 1] == track_id]
-                                tl_x = track_data[:, 2]
-                                tl_y = track_data[:, 3]
-                                width = track_data[:, 4]
-                                height = track_data[:, 5]
+                                tl_x = track_data[:, 2] / self.width
+                                tl_y = track_data[:, 3] / self.height
+                                width = track_data[:, 4] / self.width
+                                height = track_data[:, 5] / self.height
+                                # print(tl_x)
                                 frame_ids = track_data[:, 0]
                                 traj = np.vstack((frame_ids, tl_x, tl_y, width, height)).T
                                 all_object_data[current_object + int(track_id)] = traj
@@ -94,6 +97,7 @@ class DataLoader:
 
         # Save the processed data to a file
         complete_data = (all_object_data, dataset_indices)
+        # print(complete_data)
         with open(data_file, "wb") as f:
             pickle.dump(complete_data, f, protocol=2)
 
@@ -114,9 +118,10 @@ class DataLoader:
 
         for obj in all_object_data:
             traj = all_object_data[obj]
-            if traj.shape[0] > (self.seq_length + 2):
-                self.data.append(traj[:, 1:3])
-                counter += int(traj.shape[0] / (self.seq_length + 2))
+            # print(traj.shape)
+            if traj.shape[0] >= (self.seq_length + 1):
+                self.data.append(traj[:, 1:])
+                counter += int(traj.shape[0] / (self.seq_length + 1))
 
         self.num_batches = int(counter / self.batch_size)
         # print(self.num_batches)
@@ -129,8 +134,8 @@ class DataLoader:
 
         for _ in range(self.batch_size):
             traj = self.data[self.pointer]
-            n_batch = int(traj.shape[0] / (self.seq_length + 2))
-            idx = random.randint(0, traj.shape[0] - self.seq_length - 2)
+            n_batch = int(traj.shape[0] / (self.seq_length + 1))
+            idx = random.randint(0, traj.shape[0] - self.seq_length - 1)
             x_batch.append(traj[idx:idx + self.seq_length])
             y_batch.append(traj[idx + 1:idx + self.seq_length + 1])
 
