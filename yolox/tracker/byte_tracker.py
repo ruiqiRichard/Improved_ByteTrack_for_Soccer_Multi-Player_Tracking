@@ -22,6 +22,7 @@ class STrack(BaseTrack):
 
         self.score = score
         self.tracklet_len = 0
+        self.lost_frame = -1  # Initialize with -1 to indicate no lost state
 
     def predict(self):
         mean_state = self.mean.copy()
@@ -204,7 +205,7 @@ class BYTETracker(object):
         strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
         # Predict the current location with KF
         STrack.multi_predict(strack_pool)
-        dists = matching.iou_distance(strack_pool, detections) if not self.args.diou else matching.diou_distance(strack_pool, detections)
+        dists = matching.iou_distance(strack_pool, detections) if not self.args.diou else matching.diou_distance(strack_pool, detections, self.frame_id)
         if not self.args.mot20:
             dists = matching.fuse_score(dists, detections)
         matches, u_track, u_detection = matching.linear_assignment(dists, thresh=self.args.match_thresh)
@@ -228,7 +229,7 @@ class BYTETracker(object):
         else:
             detections_second = []
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
-        dists = matching.iou_distance(r_tracked_stracks, detections_second) if not self.args.diou else matching.diou_distance(r_tracked_stracks, detections_second)
+        dists = matching.iou_distance(r_tracked_stracks, detections_second) if not self.args.diou else matching.diou_distance(r_tracked_stracks, detections_second, self.frame_id)
         matches, u_track, u_detection_second = matching.linear_assignment(dists, thresh=0.5)
         for itracked, idet in matches:
             track = r_tracked_stracks[itracked]
@@ -244,11 +245,12 @@ class BYTETracker(object):
             track = r_tracked_stracks[it]
             if not track.state == TrackState.Lost:
                 track.mark_lost()
+                track.lost_frame = self.frame_id
                 lost_stracks.append(track)
 
         '''Deal with unconfirmed tracks, usually tracks with only one beginning frame'''
         detections = [detections[i] for i in u_detection]
-        dists = matching.iou_distance(unconfirmed, detections) if not self.args.diou else matching.diou_distance(unconfirmed, detections)
+        dists = matching.iou_distance(unconfirmed, detections) if not self.args.diou else matching.diou_distance(unconfirmed, detections, self.frame_id)
         if not self.args.mot20:
             dists = matching.fuse_score(dists, detections)
         matches, u_unconfirmed, u_detection = matching.linear_assignment(dists, thresh=0.7)
