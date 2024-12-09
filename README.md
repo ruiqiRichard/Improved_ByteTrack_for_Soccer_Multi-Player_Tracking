@@ -5,6 +5,12 @@ This is an improved version of ByteTrack for player tracking in soccer games, bu
 Make sure CUDA and CUDNN are properly installed and related environment variables are properly set. 
 Verified versions are anaconda3-5.1.0 + CUDA 10.0.130 + CUDNN 7.6.5 on Ubuntu 20.04.3 LTS. 
 
+### Training LSTM using Tensorflow
+```
+    cd LSTM
+    python model_tf.py --data_file <ByteTrack_HOME>/Dataset/tracking --output_model ./lstm_model.keras
+```
+
 ### MOT20 test model
 
 Train on CrowdHuman and MOT20, evaluate on MOT20 train. Download this pretrained model and put it under /pretrained.
