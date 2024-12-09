@@ -2,19 +2,18 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
+import pickle
+import matplotlib.pyplot as plt
+
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from dataset import DataLoader
 
 class LSTMTracker:
     """
     An LSTM-based model for predicting object trajectories.
-
-    The input consists of a sequence of bounding box coordinates in the format:
-        x, y, a, h
-    
-    Where:
-        - (x, y) is the center position
-        - a is the aspect ratio
-        - h is the height of the bounding box
-    
     """
 
     def __init__(self, input_dim=4, output_dim=4, seq_length=10, lstm_units=64):
@@ -36,18 +35,53 @@ class LSTMTracker:
         ])
         
         self.model.compile(optimizer='adam', loss='mse')
-
-    def train(self, X_train, y_train, epochs=50, batch_size=32):
+        
+    def train_with_dataloader(self, data_loader, num_epochs=50, batch_size=32):
         """
-        Train the LSTM model.
+        Train the LSTM model using the provided DataLoader.
 
         Parameters:
-        - X_train: ndarray, input training data of shape (num_samples, seq_length, input_dim).
-        - y_train: ndarray, target data of shape (num_samples, output_dim).
-        - epochs: int, number of training epochs.
+        - data_loader: DataLoader instance, handles loading of training data.
+        - num_epochs: int, number of training epochs.
         - batch_size: int, size of training batches.
         """
-        self.model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=1)
+        loss_history = []
+        optimizer = tf.keras.optimizers.Adam(learning_rate=0.003)
+
+        for epoch in range(num_epochs):
+            data_loader.reset_batch_pointer()
+            epoch_loss = 0  # To track loss for each epoch
+
+            for batch in range(data_loader.num_batches):
+                x_batch, y_batch = data_loader.next_batch()
+
+                x_batch = np.array(x_batch).reshape((batch_size, self.seq_length, -1))
+                y_batch = np.array(y_batch)
+
+                with tf.GradientTape() as tape:
+                    predictions = self.model(x_batch)
+                    loss = tf.reduce_mean(tf.square(predictions - y_batch))
+
+                gradients = tape.gradient(loss, self.model.trainable_variables)
+                optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
+
+                loss_value = loss.numpy()
+                loss_history.append(loss_value)
+                epoch_loss += loss_value
+
+                print(f"Epoch {epoch + 1}/{num_epochs}, Batch {batch + 1}/{data_loader.num_batches}, Loss: {loss_value:.4f}")
+
+            # Average loss for the epoch
+            avg_epoch_loss = epoch_loss / data_loader.num_batches
+            print(f"Epoch {epoch + 1} Average Loss: {avg_epoch_loss:.4f}")
+
+        # Plot training loss
+        plt.plot(loss_history, label="Training Loss")
+        plt.xlabel("Batch")
+        plt.ylabel("Loss")
+        plt.title("Training Loss Per Batch")
+        plt.legend()
+        plt.show()
 
     def predict(self, input_sequence):
         """
@@ -71,30 +105,44 @@ class LSTMTracker:
         """
         self.model.save(file_path)
 
-    def load_model(self, file_path):
+    def save_predictions(self, data_loader, file_path):
         """
-        Load a trained model from a file.
+        Save predictions to a file.
 
         Parameters:
-        - file_path: str, path to the model file.
+        - data_loader: DataLoader instance.
+        - file_path: str, path to save the predictions.
         """
-        self.model = tf.keras.models.load_model(file_path)
+        input_data = data_loader.data
+        input_data_padded = tf.keras.preprocessing.sequence.pad_sequences(
+            input_data, padding='post', maxlen=self.seq_length, dtype='float32'
+        )
+
+        predictions = self.model.predict(input_data_padded)
+
+        pred_results = {
+            "predictions": predictions,
+            "ground_truth": input_data_padded
+        }
+
+        with open(file_path, "wb") as f:
+            pickle.dump(pred_results, f)
 
 
 if __name__ == "__main__":
-    # Generate synthetic data for demonstration
-    num_samples = 1000
-    seq_length = 10
+    # Training configuration
     input_dim = 4
+    output_dim = 4
+    seq_length = 10
+    batch_size = 50
+    num_epochs = 20
 
-    X_train = np.random.rand(num_samples, seq_length, input_dim)
-    y_train = np.random.rand(num_samples, input_dim)
+    # Initialize data loader
+    data_loader = DataLoader(batch_size=batch_size, seq_length=seq_length)
 
-    # Initialize and train the LSTM tracker
-    tracker = LSTMTracker(input_dim=input_dim, seq_length=seq_length)
-    tracker.train(X_train, y_train, epochs=10, batch_size=32)
+    # Initialize and train the tracker
+    tracker = LSTMTracker(input_dim=input_dim, output_dim=output_dim, seq_length=seq_length)
+    tracker.train_with_dataloader(data_loader, num_epochs=num_epochs, batch_size=batch_size)
 
-    # Predict the next state for a sample sequence
-    sample_sequence = X_train[0]
-    prediction = tracker.predict(sample_sequence)
-    print("Predicted state:", prediction)
+    # Save predictions
+    tracker.save_predictions(data_loader, "pred_results.pkl")
