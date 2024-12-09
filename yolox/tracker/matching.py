@@ -102,7 +102,7 @@ def diou(atlbrs, btlbrs):
                 dious[i, j] = ious[i, j] - (center_dist ** 2) / (enclosing_diag ** 2)
             else:
                 dious[i, j] = ious[i, j]
-    return dious 
+    return dious
 
 
 def iou_distance(atracks, btracks):
@@ -125,22 +125,44 @@ def iou_distance(atracks, btracks):
 
     return cost_matrix
 
-def diou_distance(atracks, btracks):
+def diou_distance(atracks, btracks, current_frame_id, alpha=0.1):
     """
-    Compute cost based on DIoU
+    Compute cost based on DIoU with temporal decay weight.
     :type atracks: list[STrack] or np.ndarray
     :type btracks: list[STrack] or np.ndarray
+    :param delta_ts: np.ndarray or list, the time gaps (delta_t) between atracks and btracks.
+    :param alpha: float, decay rate controlling how quickly past matches lose importance.
     :rtype: cost_matrix np.ndarray
     """
 
     if (len(atracks) > 0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
         atlbrs = atracks
         btlbrs = btracks
+        delta_ts = np.zeros((len(atlbrs), len(btlbrs)))  # No temporal decay for raw bounding boxes
     else:
         atlbrs = [track.tlbr for track in atracks]
         btlbrs = [track.tlbr for track in btracks]
+        delta_ts = np.zeros((len(atracks), len(btracks)))
+
+        # Calculate delta_t for each track
+        for i, atrack in enumerate(atracks):
+            for j, btrack in enumerate(btracks):
+                if atrack.state == TrackState.Lost:
+                    # Compute delta_t for lost tracks
+                    delta_ts[i, j] = current_frame_id - atrack.lost_frame
+                else:
+                    # No decay for active tracks
+                    delta_ts[i, j] = 0
+
+    # Compute DIOU scores
     _dious = diou(atlbrs, btlbrs)
-    cost_matrix = 1 - _dious
+
+    # Apply temporal decay weight
+    temporal_weights = np.exp(-alpha * delta_ts)
+    weighted_dious = _dious * temporal_weights
+
+    # Convert DIOU scores to cost matrix
+    cost_matrix = 1 - weighted_dious
 
     return cost_matrix
 
