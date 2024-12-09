@@ -54,39 +54,49 @@ class DataLoader:
 
     def preprocess(self, data_dirs, data_file):
         """
-        Preprocess tracking data from ByteTrack-style dataset.
+        Preprocess tracking data from ByteTrack-style dataset, specifically focusing on .txt files in /gt directories.
         """
         all_object_data = {}
         dataset_indices = []
         current_object = 0
 
         for directory in data_dirs:
-            for sequence_dir in glob.glob(os.path.join(directory, '*')):
-                if not os.path.isdir(sequence_dir):
-                    continue
+            print(f"Processing directory: {directory}")
 
-                print(f"Processing sequence: {sequence_dir}")
+            # Recursively traverse the directories
+            for root, dirs, files in os.walk(directory):
+                # Only process files in 'gt' directories
+                if 'gt' in root:
+                    for file_name in files:
+                        if file_name.endswith('.txt'):
+                            file_path = os.path.join(root, file_name)
+                            print(f"Reading file: {file_path}")
+                            
+                            # Load data from the .txt file
+                            data = np.loadtxt(file_path, delimiter=',')
 
-                for file_name in glob.glob(os.path.join(sequence_dir, '*.txt')):
-                    print(f"Reading file: {file_name}")
-                    data = np.loadtxt(file_name, delimiter=',')
+                            # Process tracking data
+                            for track_id in np.unique(data[:, 1]):  # Unique track IDs
+                                track_data = data[data[:, 1] == track_id]
+                                x_center = (track_data[:, 2] + track_data[:, 4]) / 2
+                                y_center = (track_data[:, 3] + track_data[:, 5]) / 2
+                                frame_ids = track_data[:, 0]
+                                traj = np.vstack((frame_ids, x_center, y_center)).T
+                                all_object_data[current_object + int(track_id)] = traj
 
-                    for track_id in np.unique(data[:, 1]):  # Unique track IDs
-                        track_data = data[data[:, 1] == track_id]
-                        x_center = (track_data[:, 2] + track_data[:, 4]) / 2
-                        y_center = (track_data[:, 3] + track_data[:, 5]) / 2
-                        frame_ids = track_data[:, 0]
-                        traj = np.vstack((frame_ids, x_center, y_center)).T
-                        all_object_data[current_object + int(track_id)] = traj
+                            print(f"Processed {len(np.unique(data[:, 1]))} tracks from file {file_name}")
 
-                dataset_indices.append(current_object + len(all_object_data))
-                current_object += len(all_object_data)
+                    # Add dataset index after processing each directory
+                    dataset_indices.append(current_object + len(all_object_data))
+                    current_object += len(all_object_data)
 
+        # Save the processed data to a file
         complete_data = (all_object_data, dataset_indices)
         with open(data_file, "wb") as f:
             pickle.dump(complete_data, f, protocol=2)
 
         print(f"Preprocessed data saved to {data_file}")
+
 
     def load_preprocessed(self, data_file):
         """
@@ -96,6 +106,7 @@ class DataLoader:
             self.raw_data = pickle.load(f)
 
         all_object_data = self.raw_data[0]
+        # print(len(all_object_data))
         self.data = []
         counter = 0
 
@@ -106,6 +117,7 @@ class DataLoader:
                 counter += int(traj.shape[0] / (self.seq_length + 2))
 
         self.num_batches = int(counter / self.batch_size)
+        # print(self.num_batches)
 
     def next_batch(self):
         """
