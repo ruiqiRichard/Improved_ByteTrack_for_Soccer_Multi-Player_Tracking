@@ -5,6 +5,7 @@ import os.path as osp
 import copy
 import torch
 import torch.nn.functional as F
+from LSTM.model import LSTMTracker
 
 from .kalman_filter import KalmanFilter
 from yolox.tracker import matching
@@ -141,15 +142,173 @@ class STrack(BaseTrack):
     def __repr__(self):
         return 'OT_{}_({}-{})'.format(self.track_id, self.start_frame, self.end_frame)
 
+class STrack_lstm(BaseTrack):
+    
+    def __init__(self, tlwh, score):
+
+        # wait activate
+        self.tlwh = np.asarray(tlwh, dtype=np.float64)
+        self.track_sequence = [self.tlwh]
+        self.is_activated = False
+
+        self.score = score
+        self.tracklet_len = 1
+    
+    def normalize_sequence(self, sequence):
+        output = sequence.copy()
+        output[:, 0] /= 1920
+        output[:, 1] /= 1080
+        output[:, 2] /= 1920
+        output[:, 3] /= 1080
+        return output
+    
+    def denormalize_sequence(self, sequence):
+        output = sequence.copy()
+        output[:, 0] *= 1920
+        output[:, 1] *= 1080
+        output[:, 2] *= 1920
+        output[:, 3] *= 1080
+        return output
+
+    def predict(self, lstm_model):
+        sequence = np.asarray(self.track_sequence, dtype=np.float32)
+        sequence = self.normalize_sequence(sequence)
+        if self.tracklet_len < 10:
+            sequence = np.pad(sequence, ((0, 10-self.tracklet_len), (0, 0)), 'edge')
+            
+        preds = lstm_model.predict(sequence)
+        # print(preds)
+        # preds = self.denormalize_sequence(preds)
+        # print(preds)
+        self.tlwh = preds[self.tracklet_len-1, :]
+        
+        # self.track_sequence.append(self.tlwh)
+        # self.tracklet_len += 1
+        # while self.tracklet_len > 10:
+        #     self.track_sequence.pop(0)
+        #     self.tracklet_len -= 1
+        
+        
+    @staticmethod
+    def multi_predict(stracks, lstm_model):
+        if len(stracks) > 0:
+            for st in stracks:
+                st.predict(lstm_model)
+
+    def activate(self, kalman_filter, frame_id):
+        """Start a new tracklet"""
+        self.track_id = self.next_id()
+
+        self.tracklet_len = 1
+        self.state = TrackState.Tracked
+        if frame_id == 1:
+            self.is_activated = True
+        # self.is_activated = True
+        self.frame_id = frame_id
+        self.start_frame = frame_id
+
+    def re_activate(self, new_track, frame_id, new_id=False):
+        new_tlwh = new_track.tlwh
+        self.track_sequence.append(new_tlwh)
+        
+        self.tracklet_len += 1
+        
+        while self.tracklet_len > 10:
+            self.track_sequence.pop(0)
+            self.tracklet_len -= 1
+            
+        self.state = TrackState.Tracked
+        self.is_activated = True
+        self.frame_id = frame_id
+        if new_id:
+            self.track_id = self.next_id()
+        self.score = new_track.score
+
+    def update(self, new_track, frame_id):
+        """
+        Update a matched track
+        :type new_track: STrack
+        :type frame_id: int
+        :type update_feature: bool
+        :return:
+        """
+        self.frame_id = frame_id
+        self.tracklet_len += 1
+
+        new_tlwh = new_track.tlwh
+        self.track_sequence.append(new_tlwh)
+        while self.tracklet_len > 10:
+            self.track_sequence.pop(0)
+            self.tracklet_len -= 1
+            
+        self.state = TrackState.Tracked
+        self.is_activated = True
+
+        self.score = new_track.score
+
+    # @property
+    # # @jit(nopython=True)
+    # def tlwh(self):
+    #     """Get current position in bounding box format `(top left x, top left y,
+    #             width, height)`.
+    #     """
+    #     if self.mean is None:
+    #         return self._tlwh.copy()
+    #     ret = self.mean[:4].copy()
+    #     ret[2] *= ret[3]
+    #     ret[:2] -= ret[2:] / 2
+    #     return ret
+
+    @property
+    # @jit(nopython=True)
+    def tlbr(self):
+        """Convert bounding box to format `(min x, min y, max x, max y)`, i.e.,
+        `(top left, bottom right)`.
+        """
+        ret = self.tlwh.copy()
+        ret[2:] += ret[:2]
+        return ret
+
+    @staticmethod
+    # @jit(nopython=True)
+    def tlwh_to_xyah(tlwh):
+        """Convert bounding box to format `(center x, center y, aspect ratio,
+        height)`, where the aspect ratio is `width / height`.
+        """
+        ret = np.asarray(tlwh).copy()
+        ret[:2] += ret[2:] / 2
+        ret[2] /= ret[3]
+        return ret
+
+    def to_xyah(self):
+        return self.tlwh_to_xyah(self.tlwh)
+
+    @staticmethod
+    # @jit(nopython=True)
+    def tlbr_to_tlwh(tlbr):
+        ret = np.asarray(tlbr).copy()
+        ret[2:] -= ret[:2]
+        return ret
+
+    @staticmethod
+    # @jit(nopython=True)
+    def tlwh_to_tlbr(tlwh):
+        ret = np.asarray(tlwh).copy()
+        ret[2:] += ret[:2]
+        return ret
+
+    def __repr__(self):
+        return 'OT_{}_({}-{})'.format(self.track_id, self.start_frame, self.end_frame)
 
 class BYTETracker(object):
-    def __init__(self, args, frame_rate=30):
+    def __init__(self, args, lstm, frame_rate=30):
         self.tracked_stracks = []  # type: list[STrack]
         self.lost_stracks = []  # type: list[STrack]
         self.removed_stracks = []  # type: list[STrack]
 
         self.frame_id = 0
         self.args = args
+        self.lstm_model = lstm
         #self.det_thresh = args.track_thresh
         self.det_thresh = args.track_thresh + 0.1
         self.buffer_size = int(frame_rate / 30.0 * args.track_buffer)
@@ -183,13 +342,12 @@ class BYTETracker(object):
         dets = bboxes[remain_inds]
         scores_keep = scores[remain_inds]
         scores_second = scores[inds_second]
-
+        
+        detections = []
         if len(dets) > 0:
             '''Detections'''
-            detections = [STrack(STrack.tlbr_to_tlwh(tlbr), s) for
-                          (tlbr, s) in zip(dets, scores_keep)]
-        else:
-            detections = []
+            for (tlbr, s) in zip(dets, scores_keep):
+                detections.append(STrack(STrack.tlbr_to_tlwh(tlbr), s) if not self.args.lstm else STrack_lstm(STrack_lstm.tlbr_to_tlwh(tlbr), s))
 
         ''' Add newly detected tracklets to tracked_stracks'''
         unconfirmed = []
@@ -203,7 +361,10 @@ class BYTETracker(object):
         ''' Step 2: First association, with high score detection boxes'''
         strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
         # Predict the current location with KF
-        STrack.multi_predict(strack_pool)
+        if self.args.lstm:
+            STrack_lstm.multi_predict(strack_pool, self.lstm_model)
+        else:
+            STrack.multi_predict(strack_pool)
         dists = matching.iou_distance(strack_pool, detections) if not self.args.diou else matching.diou_distance(strack_pool, detections)
         if not self.args.mot20:
             dists = matching.fuse_score(dists, detections)
@@ -221,12 +382,12 @@ class BYTETracker(object):
 
         ''' Step 3: Second association, with low score detection boxes'''
         # association the untrack to the low score detections
+        detections_second = []
         if len(dets_second) > 0:
             '''Detections'''
-            detections_second = [STrack(STrack.tlbr_to_tlwh(tlbr), s) for
-                          (tlbr, s) in zip(dets_second, scores_second)]
-        else:
-            detections_second = []
+            for (tlbr, s) in zip(dets_second, scores_second):
+                detections_second.append(STrack(STrack.tlbr_to_tlwh(tlbr), s) if not self.args.lstm else STrack_lstm(STrack_lstm.tlbr_to_tlwh(tlbr), s))
+                
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
         dists = matching.iou_distance(r_tracked_stracks, detections_second) if not self.args.diou else matching.diou_distance(r_tracked_stracks, detections_second)
         matches, u_track, u_detection_second = matching.linear_assignment(dists, thresh=0.5)

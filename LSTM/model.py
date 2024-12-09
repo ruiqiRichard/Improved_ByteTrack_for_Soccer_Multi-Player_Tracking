@@ -125,6 +125,7 @@ class LSTMTracker:
             predictions[:, :, 1] *= self.img_height
             predictions[:, :, 2] *= self.img_width
             predictions[:, :, 3] *= self.img_height
+            print(predictions)
             loss = tf.reduce_mean(tf.square(predictions - y_batch))
             total_loss += loss.numpy()
 
@@ -148,6 +149,14 @@ class LSTMTracker:
         preds[:, 2] *= self.img_width
         preds[:, 3] *= self.img_height
         return preds
+    
+    def multi_predict(self, input_sequence):
+        preds = self.model.predict(input_sequence, verbose=0)
+        preds[:, :, 0] *= self.img_width
+        preds[:, :, 1] *= self.img_height
+        preds[:, :, 2] *= self.img_width
+        preds[:, :, 3] *= self.img_height
+        return preds
 
     def save_model(self, file_path):
         """
@@ -166,6 +175,7 @@ class LSTMTracker:
         - file_path: str, path to load the model.
         """
         self.model = tf.keras.models.load_model(file_path)
+        # print("Model loaded successfully from", file_path)
 
     def save_predictions(self, data_loader, file_path):
         """
@@ -205,9 +215,14 @@ if __name__ == "__main__":
 
     # Initialize and train the tracker
     tracker = LSTMTracker(input_dim=input_dim, output_dim=output_dim, seq_length=seq_length)
-    # tracker.train_with_dataloader(data_loader, test_data_loader, num_epochs=num_epochs, batch_size=batch_size)
     tracker.load_model("lstm_model.keras")
-    tracker.evaluate(test_data_loader)
+    # tracker.train_with_dataloader(data_loader, test_data_loader, num_epochs=num_epochs, batch_size=batch_size)
+    sequence = [[0.1, 0.2, 0.3, 0.4]]
+    sequence = np.pad(sequence, ((0, seq_length - 1), (0, 0)), mode="edge")
+    preds = tracker.predict(sequence)
+    print(preds)
+
+    # tracker.evaluate(test_data_loader)
     # Save predictions
     # tracker.save_predictions(data_loader, "pred_results.pkl")
     # tracker.save_model("lstm_model.keras")

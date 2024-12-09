@@ -15,6 +15,7 @@ from yolox.utils import fuse_model, get_model_info, postprocess
 from yolox.utils.visualize import plot_tracking
 from yolox.tracker.byte_tracker import BYTETracker
 from yolox.tracking_utils.timer import Timer
+from LSTM.model import LSTMTracker
 
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
@@ -91,6 +92,8 @@ def make_parser():
     parser.add_argument('--min_box_area', type=float, default=10, help='filter out tiny boxes')
     parser.add_argument("--mot20", dest="mot20", default=False, action="store_true", help="test mot20.")
     parser.add_argument("--diou", dest="diou", default=False, action="store_true", help="using diou for tracking.")
+    parser.add_argument("--lstm", dest="lstm", default=False, action="store_true", help="using lstm for tracking.")
+    parser.add_argument("--lstm_weights", type=str, default=None, help="path to lstm weights")
     return parser
 
 
@@ -185,9 +188,14 @@ def image_demo(predictor, vis_folder, det_folder, current_time, args):
     else:
         files = [args.path]
     files.sort()
-    tracker = BYTETracker(args, frame_rate=args.fps)
+    lstm_model = LSTMTracker(input_dim=4, output_dim=4, seq_length=10)
+    lstm_model.load_model("./LSTM/lstm_model.keras")
+    logger.info("load lstm model successfully")
+    
+    tracker = BYTETracker(args, lstm=lstm_model, frame_rate=args.fps)
     timer = Timer()
     results = []
+    
 
     seq_name = args.path.split('/')[-2]
     
@@ -343,7 +351,7 @@ def main(exp, args):
     os.makedirs(output_dir, exist_ok=True)
 
     if args.save_result:
-        vis_folder = osp.join(output_dir, "track_vis_diou") if args.diou else osp.join(output_dir, "track_vis")
+        vis_folder = osp.join(output_dir, "track_vis_lstm")
         os.makedirs(vis_folder, exist_ok=True)
 
     if args.trt:
