@@ -351,7 +351,14 @@ def main(exp, args):
     os.makedirs(output_dir, exist_ok=True)
 
     if args.save_result:
-        vis_folder = osp.join(output_dir, "track_vis_lstm")
+        if args.lstm and args.diou:
+            vis_folder = osp.join(output_dir, "track_vis_lstm_diou")
+        elif args.lstm:
+            vis_folder = osp.join(output_dir, "track_vis_lstm_iou")
+        elif args.diou:
+            vis_folder = osp.join(output_dir, "track_vis_kalman_diou")
+        else:
+            vis_folder = osp.join(output_dir, "track_vis_kalman_iou")
         os.makedirs(vis_folder, exist_ok=True)
 
     if args.trt:
