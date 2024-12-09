@@ -90,6 +90,7 @@ def make_parser():
     )
     parser.add_argument('--min_box_area', type=float, default=10, help='filter out tiny boxes')
     parser.add_argument("--mot20", dest="mot20", default=False, action="store_true", help="test mot20.")
+    parser.add_argument("--diou", dest="diou", default=False, action="store_true", help="using diou for tracking.")
     return parser
 
 

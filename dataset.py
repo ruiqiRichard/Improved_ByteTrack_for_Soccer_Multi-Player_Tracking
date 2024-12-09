@@ -10,7 +10,7 @@ class DataLoader:
     DataLoader for ByteTrack-style multi-object tracking data.
     """
 
-    def __init__(self, batch_size=50, seq_length=5, datasets=[0], forcePreProcess=False):
+    def __init__(self, batch_size=50, seq_length=10, datasets=[0], forcePreProcess=False):
         """
         Initialize the DataLoader.
 
@@ -78,10 +78,12 @@ class DataLoader:
                             # Process tracking data
                             for track_id in np.unique(data[:, 1]):  # Unique track IDs
                                 track_data = data[data[:, 1] == track_id]
-                                x_center = (track_data[:, 2] + track_data[:, 4]) / 2
-                                y_center = (track_data[:, 3] + track_data[:, 5]) / 2
+                                tl_x = track_data[:, 2]
+                                tl_y = track_data[:, 3]
+                                width = track_data[:, 4]
+                                height = track_data[:, 5]
                                 frame_ids = track_data[:, 0]
-                                traj = np.vstack((frame_ids, x_center, y_center)).T
+                                traj = np.vstack((frame_ids, tl_x, tl_y, width, height)).T
                                 all_object_data[current_object + int(track_id)] = traj
 
                             print(f"Processed {len(np.unique(data[:, 1]))} tracks from file {file_name}")

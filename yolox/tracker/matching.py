@@ -76,10 +76,14 @@ def diou(atlbrs, btlbrs):
     :type btlbrs: list[tlbr] | np.ndarray
     :rtype: np.ndarray
     """
+    ious = np.zeros((len(atlbrs), len(btlbrs)), dtype=np.float64)
+    if ious.size == 0:
+        return ious
+    
     atlbrs = np.asarray(atlbrs, dtype=np.float64)
     btlbrs = np.asarray(btlbrs, dtype=np.float64)
     
-    _ious = bbox_ious(
+    ious = bbox_ious(
         np.ascontiguousarray(atlbrs, dtype=np.float64),
         np.ascontiguousarray(btlbrs, dtype=np.float64)
     )
@@ -95,9 +99,9 @@ def diou(atlbrs, btlbrs):
             enclosing_maxs = np.maximum(atlbrs[i, 2:], btlbrs[j, 2:])
             enclosing_diag = np.sqrt(np.sum((enclosing_maxs - enclosing_mins) ** 2))
             if enclosing_diag > 0: 
-                dious[i, j] = _ious[i, j] - (center_dist ** 2) / (enclosing_diag ** 2)
+                dious[i, j] = ious[i, j] - (center_dist ** 2) / (enclosing_diag ** 2)
             else:
-                dious[i, j] = _ious[i, j]
+                dious[i, j] = ious[i, j]
     return dious 
 
 
@@ -123,7 +127,7 @@ def iou_distance(atracks, btracks):
 
 def diou_distance(atracks, btracks):
     """
-    Compute cost based on DIOU
+    Compute cost based on DIoU
     :type atracks: list[STrack] or np.ndarray
     :type btracks: list[STrack] or np.ndarray
     :rtype: cost_matrix np.ndarray
