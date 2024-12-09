@@ -189,7 +189,7 @@ def image_demo(predictor, vis_folder, det_folder, current_time, args):
         files = [args.path]
     files.sort()
     lstm_model = LSTMTracker(input_dim=4, output_dim=4, seq_length=10)
-    lstm_model.load_model("./LSTM/lstm_model.keras")
+    lstm_model.load_model(args.lstm_weights)
     logger.info("load lstm model successfully")
     
     tracker = BYTETracker(args, lstm=lstm_model, frame_rate=args.fps)
