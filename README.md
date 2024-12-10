@@ -36,22 +36,31 @@ To run challenge you should set the environment variable differently:
 
 Generate gt.zip needed for evaluation
 ```
-    python tools/zip_gt.py -f <SN_TRACKING_HOME>/test/
+    python eval/zip_gt.py -f Dataset/tracking/test/
 
 ```
+
+Zip  the Tracker Result
+```
+    cd <RESULT_FOLDER> # For me is YOLOX_outputs/yolox_x_soccernet_no_gt/track_vis
+    zip soccernet_mot_results.zip SNMOT-???.txt
+```
+
+Before you run evaluation, move both of your zip file to eval folder
 
 Run evaluation.
 
 ```
 pip install git+https://github.com/JonathonLuiten/TrackEval.git
 
-python tools/evaluate_soccernet_v3_tracking.py \
---TRACKERS_FOLDER_ZIP soccernet_mot_results.zip \
---GT_FOLDER_ZIP gt.zip \
---BENCHMARK SNMOT --DO_PREPROC False \
---SEQMAP_FILE tools/SNMOT-test.txt \
---TRACKERS_TO_EVAL test \
---SPLIT_TO_EVAL test \
+python evaluate_soccernet_v3_tracking.py     
+--TRACKERS_FOLDER_ZIP soccernet_mot_results.zip     
+--GT_FOLDER_ZIP gt.zip     
+--BENCHMARK SNMOT     
+--DO_PREPROC False     
+--SEQMAP_FILE SNMOT-test.txt     
+--TRACKERS_TO_EVAL test     
+--SPLIT_TO_EVAL test     
 --OUTPUT_SUB_FOLDER eval_results
 ```
 
