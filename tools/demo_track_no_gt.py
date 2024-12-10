@@ -94,6 +94,7 @@ def make_parser():
     parser.add_argument("--diou", dest="diou", default=False, action="store_true", help="using diou for tracking.")
     parser.add_argument("--lstm", dest="lstm", default=False, action="store_true", help="using lstm for tracking.")
     parser.add_argument("--lstm_weights", type=str, default=None, help="path to lstm weights")
+    parser.add_argument("--time_weighted", dest="time_weighted", default=False, action="store_true", help="whether to use time weighted diou")
     return parser
 
 
@@ -359,7 +360,11 @@ def main(exp, args):
             vis_folder = osp.join(output_dir, "track_vis_kalman_diou")
         else:
             vis_folder = osp.join(output_dir, "track_vis_kalman_iou")
+            
+        if args.time_weighted:
+            vis_folder += "_time_weighted"
         os.makedirs(vis_folder, exist_ok=True)
+        
 
     if args.trt:
         args.device = "gpu"

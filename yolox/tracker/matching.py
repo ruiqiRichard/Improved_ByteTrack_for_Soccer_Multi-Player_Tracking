@@ -7,6 +7,7 @@ from scipy.spatial.distance import cdist
 from cython_bbox import bbox_overlaps as bbox_ious
 from yolox.tracker import kalman_filter
 import time
+from .basetrack import BaseTrack, TrackState
 
 def merge_matches(m1, m2, shape):
     O,P,Q = shape
@@ -125,7 +126,7 @@ def iou_distance(atracks, btracks):
 
     return cost_matrix
 
-def diou_distance(atracks, btracks, current_frame_id, alpha=0.1):
+def diou_distance(atracks, btracks, current_frame_id, time_weighted=False, alpha=0.01):
     """
     Compute cost based on DIoU with temporal decay weight.
     :type atracks: list[STrack] or np.ndarray
@@ -158,7 +159,8 @@ def diou_distance(atracks, btracks, current_frame_id, alpha=0.1):
     _dious = diou(atlbrs, btlbrs)
 
     # Apply temporal decay weight
-    temporal_weights = np.exp(-alpha * delta_ts)
+    temporal_weights = np.exp(-alpha * delta_ts) if time_weighted else 1
+    # print(temporal_weights)
     weighted_dious = _dious * temporal_weights
 
     # Convert DIOU scores to cost matrix

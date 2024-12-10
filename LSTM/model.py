@@ -131,7 +131,12 @@ class LSTMTracker(nn.Module):
         input_sequence = torch.tensor(input_sequence, dtype=torch.float32).unsqueeze(0).to(device)
         with torch.no_grad():
             predictions = self(input_sequence).squeeze(0)
-        return predictions.cpu().numpy()
+        predictions = predictions.cpu().numpy()
+        predictions[:, 0] *= self.img_width
+        predictions[:, 1] *= self.img_height
+        predictions[:, 2] *= self.img_width
+        predictions[:, 3] *= self.img_height
+        return predictions
 
     def save_model(self, file_path):
         """

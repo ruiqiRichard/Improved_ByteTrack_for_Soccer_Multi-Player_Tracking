@@ -12,3 +12,4 @@ YOLOX_outputs
 data.ipynb
 *.zip
 /eval/temp
+/eval
