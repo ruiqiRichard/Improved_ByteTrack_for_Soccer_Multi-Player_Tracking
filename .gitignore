@@ -11,3 +11,4 @@ YOLOX_outputs
 /images
 data.ipynb
 *.zip
+/eval/temp
