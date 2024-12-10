@@ -7,3 +7,6 @@ yolox.egg-info
 __pycache__
 /tracking
 YOLOX_outputs
+/dl
+/images
+data.ipynb
