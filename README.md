@@ -16,16 +16,7 @@ Proposed modifications include:
 * Using Distance IOU (DIoU) for more precise overlap measurements.
 * Introducing a decay weight for unmatched track management.
 
-## Prerequisites
-
-Ensure that CUDA and CUDNN are installed and properly configured. Verified environment:
-
-* **OS:** Ubuntu 20.04.3 LTS
-* **Python Environment:** Anaconda 3-5.1.0
-* **CUDA:** Version 10.0.130
-* **CUDNN:** Version 7.6.5
-
-Install dependencies:
+## Install dependencies:
 
 ```bash
 pip install -r requirements.txt
