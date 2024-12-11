@@ -44,9 +44,11 @@ python model_tf.py --data_file <ByteTrack_HOME>/Dataset/tracking --output_model 
 
 Train on CrowdHuman and MOT20 datasets, and evaluate on MOT20 train. Pretrained models:
 
-| Model | MOTA | IDF1 | IDs | FPS |
-|-------|------|------|-----|-----|
-| bytetrack_x_mot20 [baidu (code:3apd)] | 93.4 | 89.3 | 1057 | 17.5 |
+
+| Model    |  MOTA | IDF1 | IDs | FPS |
+|------------|-------|------|------|------|
+|bytetrack_x_mot20 [[google]](https://drive.google.com/file/d/1HX2_JpMOjOIj1Z9rJjoet9XNy_cCAs5U/view?usp=sharing), [[baidu(code:3apd)]](https://pan.baidu.com/s/1bowJJj0bAnbhEQ3_6_Am0A) | 93.4 | 89.3 | 1057 | 17.5 |
+
 
 Place the pretrained model in the `/pretrained` directory.
 
