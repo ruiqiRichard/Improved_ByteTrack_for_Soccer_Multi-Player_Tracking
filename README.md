@@ -96,9 +96,9 @@ Run inference for each sequence:
 export ByteTrack_HOME=<ByteTrack_HOME>
 cd <ByteTrack_HOME>
 export SN_TRACKING_MODE=test
-bash run_bytetrack_gt_batch.sh
+bash run_bytetrack_no_gt_batch.sh
 ```
-
+For detailed arguments, see tools/demo_track_no_gt.py
 2. For challenge mode:
 
 ```bash
