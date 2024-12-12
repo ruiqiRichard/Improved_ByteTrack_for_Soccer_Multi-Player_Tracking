@@ -58,12 +58,6 @@ docker run --gpus all -it --rm \
 bytetrack:latest
 ```
 
-## Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
 ## Training LSTM with PyTorch
 
 Train the LSTM model with the following command:
