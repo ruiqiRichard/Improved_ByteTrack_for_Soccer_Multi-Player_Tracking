@@ -13,6 +13,7 @@ from yolox.utils import fuse_model, get_model_info, postprocess
 from yolox.utils.visualize import plot_tracking
 from yolox.tracker.byte_tracker import BYTETracker
 from yolox.tracking_utils.timer import Timer
+from LSTM.model import LSTMTracker
 
 
 IMAGE_EXT = [".jpg", ".jpeg", ".webp", ".bmp", ".png"]
@@ -87,8 +88,11 @@ def make_parser():
     )
     parser.add_argument('--min_box_area', type=float, default=10, help='filter out tiny boxes')
     parser.add_argument("--mot20", dest="mot20", default=False, action="store_true", help="test mot20.")
+    parser.add_argument("--diou", dest="diou", default=False, action="store_true", help="using diou for tracking.")
+    parser.add_argument("--lstm", dest="lstm", default=False, action="store_true", help="using lstm for tracking.")
+    parser.add_argument("--lstm_weights", type=str, default=None, help="path to lstm weights")
+    parser.add_argument("--time_weighted", dest="time_weighted", default=False, action="store_true", help="whether to use time weighted diou")
     return parser
-
 
 def get_image_list(path):
     image_names = []
@@ -163,17 +167,7 @@ class Predictor(object):
         if self.fp16:
             img = img.half()  # to FP16
 
-        with torch.no_grad():
-            timer.tic()
-            outputs = self.model(img)
-            if self.decoder is not None:
-                outputs = self.decoder(outputs, dtype=outputs.type())
-            outputs = postprocess(
-                outputs, self.num_classes, self.confthre, self.nmsthre
-            )
-            #logger.info("Infer time: {:.4f}s".format(time.time() - t0))
-        return outputs, img_info
-
+        return None, img_info
 
 def image_demo(predictor, vis_folder, current_time, args):
     if osp.isdir(args.path):
@@ -181,14 +175,44 @@ def image_demo(predictor, vis_folder, current_time, args):
     else:
         files = [args.path]
     files.sort()
-    tracker = BYTETracker(args, frame_rate=args.fps)
+    if args.lstm:
+        lstm_model = LSTMTracker(input_dim=4, output_dim=4, seq_length=10)
+        lstm_model.load_model(args.lstm_weights)
+        logger.info("Loaded LSTM model successfully")
+    else:
+        lstm_model = None
+    tracker = BYTETracker(args, lstm=lstm_model, frame_rate=args.fps)
+
+
     timer = Timer()
     results = []
+    gt_file = args.path + '/../det/det.txt'
+
+    with open(gt_file, 'r') as f:
+        lines = f.readlines()
+
+    seq_name = args.path.split('/')[-2]
+
 
     for frame_id, img_path in enumerate(files, 1):
         outputs, img_info = predictor.inference(img_path, timer)
-        if outputs[0] is not None:
-            online_targets = tracker.update(outputs[0], [img_info['height'], img_info['width']], exp.test_size)
+
+        gt_frame_lines = [item for item in lines if int(item.split(',')[0]) == frame_id]
+        gt_detections = [
+            list(map(float,line.split(',')[2:6])) + [1.0, 1.0, 0.0] for line in gt_frame_lines]
+
+        gt_detections_tensor = torch.tensor(gt_detections, device = predictor.device, dtype = torch.float32)
+
+
+        if len(gt_detections_tensor.shape) > 1:
+            gt_detections_tensor[:, 2] = gt_detections_tensor[:, 0] + gt_detections_tensor[:, 2]
+            gt_detections_tensor[:, 3] = gt_detections_tensor[:, 1] + gt_detections_tensor[:, 3]
+        else:
+            print(gt_detections_tensor)
+
+        if len(gt_detections_tensor) > 0 :
+            online_targets = tracker.update(gt_detections_tensor, [img_info['height'], img_info['width']], exp.test_size)
+
             online_tlwhs = []
             online_ids = []
             online_scores = []
@@ -212,10 +236,10 @@ def image_demo(predictor, vis_folder, current_time, args):
             timer.toc()
             online_im = img_info['raw_img']
 
-        # result_image = predictor.visual(outputs[0], img_info, predictor.confthre)
+
         if args.save_result:
             timestamp = time.strftime("%Y_%m_%d_%H_%M_%S", current_time)
-            save_folder = osp.join(vis_folder, timestamp)
+            save_folder = osp.join(vis_folder, f'{seq_name}_{timestamp}')
             os.makedirs(save_folder, exist_ok=True)
             cv2.imwrite(osp.join(save_folder, osp.basename(img_path)), online_im)
 
@@ -227,11 +251,15 @@ def image_demo(predictor, vis_folder, current_time, args):
             break
 
     if args.save_result:
-        res_file = osp.join(vis_folder, f"{timestamp}.txt")
+        res_file = osp.join(vis_folder, f"{timestamp}.{seq_name}.txt")
         with open(res_file, 'w') as f:
             f.writelines(results)
         logger.info(f"save results to {res_file}")
 
+        res_file = osp.join(vis_folder, f"{seq_name}.txt")
+        with open(res_file, 'w') as f:
+            f.writelines(results)
+        logger.info(f"save results to {res_file}")
 
 def imageflow_demo(predictor, vis_folder, current_time, args):
     cap = cv2.VideoCapture(args.path if args.demo == "video" else args.camid)
@@ -306,8 +334,11 @@ def main(exp, args):
     os.makedirs(output_dir, exist_ok=True)
 
     if args.save_result:
-        vis_folder = osp.join(output_dir, "track_vis")
-        os.makedirs(vis_folder, exist_ok=True)
+        if args.lstm:
+            vis_folder = osp.join(output_dir, "track_vis_lstm_iou")
+        else:
+            vis_folder = osp.join(output_dir, "track_vis_")
+            os.makedirs(vis_folder, exist_ok=True)
 
     if args.trt:
         args.device = "gpu"
