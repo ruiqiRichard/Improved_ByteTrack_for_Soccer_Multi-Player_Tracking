@@ -8,14 +8,14 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from dataset import DataLoader
+from LSTM.dataset import DataLoader
 
 class LSTMTracker(nn.Module):
     """
     An LSTM-based model for predicting object trajectories in PyTorch.
     """
 
-    def __init__(self, input_dim=4, output_dim=4, seq_length=10, lstm_units=64):
+    def __init__(self, input_dim=4, hidden_dim=256, flow_dim=200, output_dim=4, seq_length=10, num_heads=4, lstm_layers=2):
         """
         Initialize the LSTM model.
 
@@ -30,10 +30,13 @@ class LSTMTracker(nn.Module):
         self.img_width = 1920
         self.img_height = 1080
 
-        self.lstm = nn.LSTM(input_dim, lstm_units, batch_first=True)
-        self.fc = nn.Linear(lstm_units, output_dim)
+        self.lstm = nn.LSTM(input_dim, hidden_dim, lstm_layers, batch_first=True)
+        self.flow_proj = nn.Linear(flow_dim, hidden_dim)
+        self.cross_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads, batch_first=True)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, x):
+    def forward(self, x, flow):
         """
         Forward pass for the LSTMTracker.
 
@@ -44,7 +47,11 @@ class LSTMTracker(nn.Module):
         - torch.Tensor, output tensor of shape (batch_size, seq_length, output_dim).
         """
         lstm_out, _ = self.lstm(x)
-        return self.fc(lstm_out)
+        flow_proj = self.flow_proj(flow)
+        attended_features, _ = self.cross_attention(lstm_out, flow_proj, flow_proj)
+        attended_features = lstm_out + attended_features
+        out = self.fc2(attended_features)
+        return self.fc(out)
 
     def train_with_dataloader(self, train_loader, test_loader, num_epochs=50, batch_size=32, learning_rate=0.001):
         """
@@ -67,13 +74,15 @@ class LSTMTracker(nn.Module):
             train_loader.reset_batch_pointer()
             epoch_loss = 0
 
-            for batch in tqdm(range(train_loader.num_batches), desc=f"Epoch {epoch + 1}/{num_epochs}"):
+            for _ in tqdm(range(train_loader.num_batches), desc=f"Epoch {epoch + 1}/{num_epochs}"):
                 x_batch, y_batch = train_loader.next_batch()
-                x_batch = torch.tensor(x_batch, dtype=torch.float32).to(device)
+                x_batch_traj = torch.tensor(x_batch['traj'], dtype=torch.float32).to(device)
+                
+                x_batch_flow = torch.tensor(x_batch['flow'], dtype=torch.float32).to(device)
                 y_batch = torch.tensor(y_batch, dtype=torch.float32).to(device)
 
                 optimizer.zero_grad()
-                predictions = self(x_batch)
+                predictions = self(x_batch_traj, x_batch_flow)
                 loss = criterion(predictions, y_batch)
                 loss.backward()
                 optimizer.step()
@@ -102,19 +111,20 @@ class LSTMTracker(nn.Module):
         criterion = nn.MSELoss()
 
         with torch.no_grad():
-            for batch in tqdm(range(data_loader.num_batches)):
-                x_batch, y_batch = data_loader.next_batch()
-                x_batch = torch.tensor(x_batch, dtype=torch.float32).to(device)
+            for _ in tqdm(range(data_loader.num_batches)):
+                x_batch, y_batch = train_loader.next_batch()
+                x_batch_traj = torch.tensor(x_batch['traj'], dtype=torch.float32).to(device)
+                x_batch_flow = torch.tensor(x_batch['flow'], dtype=torch.float32).to(device)
                 y_batch = torch.tensor(y_batch, dtype=torch.float32).to(device)
 
-                predictions = self(x_batch)
+                predictions = self(x_batch_traj, x_batch_flow)
                 loss = criterion(predictions, y_batch)
                 total_loss += loss.item()
 
         avg_loss = total_loss / data_loader.num_batches
         print(f"Average Validation Loss: {avg_loss:.7f}")
 
-    def predict(self, input_sequence):
+    def predict(self, input_sequence, flow_sequence):
         """
         Predict the next state given an input sequence.
 
@@ -129,8 +139,9 @@ class LSTMTracker(nn.Module):
         self.eval()
 
         input_sequence = torch.tensor(input_sequence, dtype=torch.float32).unsqueeze(0).to(device)
+        flow_sequence = torch.tensor(flow_sequence, dtype=torch.float32).unsqueeze(0).to(device)
         with torch.no_grad():
-            predictions = self(input_sequence).squeeze(0)
+            predictions = self(input_sequence, flow_sequence).squeeze(0)
         predictions = predictions.cpu().numpy()
         predictions[:, 0] *= self.img_width
         predictions[:, 1] *= self.img_height
@@ -187,20 +198,21 @@ if __name__ == "__main__":
     # Training configuration
     input_dim = 4
     output_dim = 4
-    seq_length = 10
+    seq_length = 20
     batch_size = 64
-    num_epochs = 10
+    num_epochs = 9
 
     # Initialize data loader
     train_loader = DataLoader(batch_size=batch_size, seq_length=seq_length)
     test_loader = DataLoader(batch_size=batch_size, seq_length=seq_length, train=False)
 
     # Initialize and train the tracker
-    tracker = LSTMTracker(input_dim=input_dim, output_dim=output_dim, seq_length=seq_length)
+    tracker = LSTMTracker(input_dim=input_dim, output_dim=output_dim, seq_length=seq_length, lstm_layers=1)
+    # tracker.load_model("lstm_model.pth")
     tracker.train_with_dataloader(train_loader, test_loader, num_epochs=num_epochs, batch_size=batch_size)
 
     # Save the model
-    tracker.save_model("lstm_model.pth")
+    tracker.save_model("lstm_model_epoch9_2.pth")
 
     # Evaluate the model
     tracker.evaluate(test_loader)

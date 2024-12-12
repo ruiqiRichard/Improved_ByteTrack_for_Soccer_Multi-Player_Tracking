@@ -50,6 +50,12 @@ class OpticalFlowExtractor:
             next_gray = cv2.cvtColor(frames[i], cv2.COLOR_BGR2GRAY)
             p1, st, err = cv2.calcOpticalFlowPyrLK(prev_gray, next_gray, p0, None, **self.lk_params)
             good_old = p0[st == 1]
+            if p1 is None:
+                prev_gray = next_gray.copy()
+                p0 = cv2.goodFeaturesToTrack(prev_gray, mask=None, **self.feature_params)
+                print(p0)
+                optical_flows.append(np.zeros(self.flow_dim))
+                continue
             good_new = p1[st == 1]
             flow = (good_new - good_old).flatten()
 
@@ -65,7 +71,7 @@ class OpticalFlowExtractor:
         
         return np.array(optical_flows)
 
-    def process_dataset(self, dataset_dir, output_dir, num_frames=31):
+    def process_dataset(self, dataset_dir, output_dir, num_frames=751):
         """
         Process each subdirectory in the dataset to extract optical flow features.
 
@@ -151,16 +157,16 @@ class OpticalFlowExtractor:
             plt.close()
 
 if __name__ == "__main__":
-    dataset_dir = "./Dataset/tracking/temp_extracted/train"
-    output_dir = "./Model/optical_flow_features"
+    dataset_dir = "./Dataset/tracking/test"
+    output_dir = "./Model/optical_flow_features_test"
     visualization_dir = "./Model/optical_flow_visualizations"
 
     extractor = OpticalFlowExtractor()
     extractor.process_dataset(dataset_dir, output_dir)
 
     # Visualize all optical flow features
-    for file in os.listdir(output_dir):
-        if file.endswith(".npy"):
-            flow_file_path = os.path.join(output_dir, file)
-            print(f"Visualizing: {file}")
-            extractor.visualize_optical_flow(flow_file_path, save_dir=visualization_dir)
+    # for file in os.listdir(output_dir):
+    #     if file.endswith(".npy"):
+    #         flow_file_path = os.path.join(output_dir, file)
+    #         print(f"Visualizing: {file}")
+    #         extractor.visualize_optical_flow(flow_file_path, save_dir=visualization_dir)

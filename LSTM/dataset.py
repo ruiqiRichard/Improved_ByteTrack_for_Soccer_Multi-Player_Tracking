@@ -21,6 +21,7 @@ class DataLoader:
         - forcePreProcess: bool, force reprocessing of data even if preprocessed data exists.
         """
         self.data_dirs = ['../Dataset/tracking']
+        self.flow_data_dirs = ['../Model/optical_flow_features'] if train else ['../Model/optical_flow_features_test']
 
         try:
             self.used_data_dirs = [self.data_dirs[x] for x in datasets]
@@ -32,6 +33,8 @@ class DataLoader:
         self.seq_length = seq_length
         self.width = 1920
         self.height = 1080
+        
+        self.data = {'traj':[], 'flow':[]}
 
         # Ensure that the train.zip is unzipped
         # self.extracted_dir = os.path.join(self.data_dir, "temp_extracted")
@@ -68,10 +71,16 @@ class DataLoader:
             # Recursively traverse the directories
             for root, dirs, files in os.walk(directory):
                 # Only process files in 'gt' directories
+                
                 if 'gt' in root:
+                    print(root)
+                    print(f"Processing directory: {root}")
                     for file_name in files:
                         if file_name.endswith('.txt'):
+                            
                             file_path = os.path.join(root, file_name)
+                            dir_name = root.split("train")[-1][1:-3] if "train" in root else root.split("test")[-1][1:-3]
+                            # print(dir_name)
                             print(f"Reading file: {file_path}")
                             
                             # Load data from the .txt file
@@ -86,7 +95,10 @@ class DataLoader:
                                 height = track_data[:, 5] / self.height
                                 # print(tl_x)
                                 frame_ids = track_data[:, 0]
-                                traj = np.vstack((frame_ids, tl_x, tl_y, width, height)).T
+                                # print(dirs)
+                                # directories = [os.path.basename(os.path.normpath(directory))] * len(frame_ids)
+                                # print(directories)
+                                traj = np.vstack(([dir_name] * len(frame_ids), frame_ids, tl_x, tl_y, width, height)).T
                                 all_object_data[current_object + int(track_id)] = traj
 
                             print(f"Processed {len(np.unique(data[:, 1]))} tracks from file {file_name}")
@@ -113,14 +125,26 @@ class DataLoader:
 
         all_object_data = self.raw_data[0]
         # print(len(all_object_data))
-        self.data = []
+
         counter = 0
 
         for obj in all_object_data:
             traj = all_object_data[obj]
             # print(traj.shape)
             if traj.shape[0] >= (self.seq_length + 1):
-                self.data.append(traj[:, 1:])
+                self.data['traj'].append(traj[:, 2:])
+                frame_ids = traj[:, 1].astype(float)
+                # print(frame_ids.shape)
+                flow = np.load(os.path.join(self.flow_data_dirs[0], traj[0, 0] + "_optical_flow.npy"))
+
+                zero_row = np.zeros((1, flow.shape[1]))
+                flow = np.vstack((zero_row, flow))
+                # print(flow.shape)
+                flow = flow[frame_ids.astype(int)-1]
+                
+                
+                self.data['flow'].append(flow)
+                # print("loading flow", os.path.join(self.flow_data_dirs[0], traj[0, 0] + "_optical_flow.npy"))
                 counter += int(traj.shape[0] / (self.seq_length + 1))
 
         self.num_batches = int(counter / self.batch_size)
@@ -130,13 +154,15 @@ class DataLoader:
         """
         Fetch the next batch of sequences.
         """
-        x_batch, y_batch = [], []
+        x_batch, y_batch = {'traj':[], 'flow':[]}, []
 
         for _ in range(self.batch_size):
-            traj = self.data[self.pointer]
+            traj = self.data['traj'][self.pointer].astype(float)
+            # print(traj.shape)
             n_batch = int(traj.shape[0] / (self.seq_length + 1))
             idx = random.randint(0, traj.shape[0] - self.seq_length - 1)
-            x_batch.append(traj[idx:idx + self.seq_length])
+            x_batch['traj'].append(traj[idx:idx + self.seq_length])
+            x_batch['flow'].append(self.data['flow'][self.pointer][idx:idx + self.seq_length])
             y_batch.append(traj[idx + 1:idx + self.seq_length + 1])
 
             if random.random() < (1.0 / float(n_batch)):
@@ -157,3 +183,17 @@ class DataLoader:
         Reset the data pointer to the start.
         """
         self.pointer = 0
+
+if __name__ == "__main__":
+    # Training configuration
+    input_dim = 4
+    output_dim = 4
+    seq_length = 20
+    batch_size = 64
+    num_epochs = 10
+
+    # Initialize data loader
+    # train_loader = DataLoader(batch_size=batch_size, seq_length=seq_length)
+    test_loader = DataLoader(batch_size=batch_size, seq_length=seq_length, train=False)
+    
+    print(test_loader.next_batch()[1][0].shape)

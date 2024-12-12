@@ -6,6 +6,7 @@ import cv2
 import torch
 import json
 import pickle
+import numpy as np
 
 from loguru import logger
 
@@ -183,19 +184,25 @@ class Predictor(object):
         return outputs, img_info
 
 
-def image_demo(predictor, vis_folder, det_folder, current_time, args):
+def image_demo(predictor, vis_folder, det_folder, flow_folder, current_time, args):
     if osp.isdir(args.path):
         files = get_image_list(args.path)
     else:
         files = [args.path]
+        
+    input_dim = 4
+    output_dim = 4
+    seq_length = 20
+
     files.sort()
-    lstm_model = LSTMTracker(input_dim=4, output_dim=4, seq_length=10)
+    lstm_model = LSTMTracker(input_dim=input_dim, output_dim=output_dim, seq_length=seq_length, lstm_layers=1)
     lstm_model.load_model(args.lstm_weights)
     logger.info("load lstm model successfully")
     
     tracker = BYTETracker(args, lstm=lstm_model, frame_rate=args.fps)
     timer = Timer()
     results = []
+    
     
 
     seq_name = args.path.split('/')[-2]
@@ -207,6 +214,11 @@ def image_demo(predictor, vis_folder, det_folder, current_time, args):
         # pdb.set_trace()
         
         snmot_name = img_path.split('/')[-2]  # e.g., SNMOT-116
+        # flow_path = os.path.join(flow_folder, snmot_name)
+        flows = np.load(os.path.join(flow_folder, f"{snmot_name}_optical_flow.npy"))
+        zero_row = np.zeros((1, flows.shape[1]))
+        flows = np.vstack((zero_row, flows))
+        flow = flows[frame_id-1]
         outputs_folder = osp.join(det_folder, snmot_name)
         os.makedirs(outputs_folder, exist_ok=True)
         
@@ -228,7 +240,7 @@ def image_demo(predictor, vis_folder, det_folder, current_time, args):
         # outputs, img_info = predictor.inference(img_path, timer)
         # print(img_path)
         if outputs[0] is not None:
-            online_targets = tracker.update(outputs[0], [img_info['height'], img_info['width']], exp.test_size)
+            online_targets = tracker.update(outputs[0], [img_info['height'], img_info['width']], exp.test_size, flow)
             online_tlwhs = []
             online_ids = []
             online_scores = []
@@ -355,7 +367,7 @@ def main(exp, args):
         if args.lstm and args.diou:
             vis_folder = osp.join(output_dir, "track_vis_lstm_diou")
         elif args.lstm:
-            vis_folder = osp.join(output_dir, "track_vis_lstm_iou")
+            vis_folder = osp.join(output_dir, "track_vis_lstm_flow_iou")
         elif args.diou:
             vis_folder = osp.join(output_dir, "track_vis_kalman_diou")
         else:
@@ -417,8 +429,9 @@ def main(exp, args):
     predictor = Predictor(model, exp, trt_file, decoder, args.device, args.fp16)
     current_time = time.localtime()
     det_folder = osp.join(output_dir, "yolox_dets")
+    flow_folder = "./Model/optical_flow_features_test"
     if args.demo == "image":
-        image_demo(predictor, vis_folder, det_folder, current_time, args)
+        image_demo(predictor, vis_folder, det_folder, flow_folder, current_time, args)
     elif args.demo == "video" or args.demo == "webcam":
         imageflow_demo(predictor, vis_folder, current_time, args)
 

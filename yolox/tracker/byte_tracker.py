@@ -145,11 +145,13 @@ class STrack(BaseTrack):
 
 class STrack_lstm(BaseTrack):
     
-    def __init__(self, tlwh, score):
+    def __init__(self, tlwh, flow, score):
 
         # wait activate
         self.tlwh = np.asarray(tlwh, dtype=np.float64)
+        self.flow = np.asarray(flow, dtype=np.float64)
         self.track_sequence = [self.tlwh]
+        self.flow_sequence = [self.flow]
         self.is_activated = False
 
         self.score = score
@@ -172,13 +174,15 @@ class STrack_lstm(BaseTrack):
         return output
 
     def predict(self, lstm_model):
-        sequence = np.asarray(self.track_sequence, dtype=np.float32)
-        sequence = self.normalize_sequence(sequence)
-        if self.tracklet_len < 10:
-            sequence = np.pad(sequence, ((0, 10-self.tracklet_len), (0, 0)), 'edge')
+        track_sequence = np.asarray(self.track_sequence, dtype=np.float32)
+        flow_sequence = np.asarray(self.flow_sequence, dtype=np.float32)
+        track_sequence = self.normalize_sequence(track_sequence)
+        if self.tracklet_len < lstm_model.seq_length:
+            track_sequence = np.pad(track_sequence, ((0, lstm_model.seq_length-self.tracklet_len), (0, 0)), 'edge')
+            flow_sequence = np.pad(flow_sequence, ((0, lstm_model.seq_length-self.tracklet_len), (0, 0)), 'edge')
             
-        preds = lstm_model.predict(sequence)
-        # print(preds)
+        preds = lstm_model.predict(track_sequence, flow_sequence)
+        print(preds)
         # preds = self.denormalize_sequence(preds)
         # print(preds)
         self.tlwh = preds[self.tracklet_len-1, :]
@@ -211,12 +215,14 @@ class STrack_lstm(BaseTrack):
     def re_activate(self, new_track, frame_id, new_id=False):
         new_tlwh = new_track.tlwh
         self.track_sequence.append(new_tlwh)
+        self.flow_sequence.append(new_track.flow)
         
         self.tracklet_len += 1
         
-        while self.tracklet_len > 10:
+        while self.tracklet_len > 20:
             self.track_sequence.pop(0)
             self.tracklet_len -= 1
+            self.flow_sequence.pop(0)
             
         self.state = TrackState.Tracked
         self.is_activated = True
@@ -237,10 +243,15 @@ class STrack_lstm(BaseTrack):
         self.tracklet_len += 1
 
         new_tlwh = new_track.tlwh
+        new_flow = new_track.flow
         self.track_sequence.append(new_tlwh)
-        while self.tracklet_len > 10:
+        self.flow_sequence.append(new_flow)
+        # print("flow length", len(self.flow_sequence))
+        # print("track length", len(self.track_sequence))
+        while self.tracklet_len > 20:
             self.track_sequence.pop(0)
             self.tracklet_len -= 1
+            self.flow_sequence.pop(0)
             
         self.state = TrackState.Tracked
         self.is_activated = True
@@ -306,7 +317,7 @@ class BYTETracker(object):
         self.tracked_stracks = []  # type: list[STrack]
         self.lost_stracks = []  # type: list[STrack]
         self.removed_stracks = []  # type: list[STrack]
-
+        
         self.frame_id = 0
         self.args = args
         self.lstm_model = lstm
@@ -316,7 +327,7 @@ class BYTETracker(object):
         self.max_time_lost = self.buffer_size
         self.kalman_filter = KalmanFilter()
 
-    def update(self, output_results, img_info, img_size):
+    def update(self, output_results, img_info, img_size, flow):
         self.frame_id += 1
         activated_starcks = []
         refind_stracks = []
@@ -348,7 +359,7 @@ class BYTETracker(object):
         if len(dets) > 0:
             '''Detections'''
             for (tlbr, s) in zip(dets, scores_keep):
-                detections.append(STrack(STrack.tlbr_to_tlwh(tlbr), s) if not self.args.lstm else STrack_lstm(STrack_lstm.tlbr_to_tlwh(tlbr), s))
+                detections.append(STrack(STrack.tlbr_to_tlwh(tlbr), s) if not self.args.lstm else STrack_lstm(STrack_lstm.tlbr_to_tlwh(tlbr), flow, s))
 
         ''' Add newly detected tracklets to tracked_stracks'''
         unconfirmed = []
@@ -387,7 +398,7 @@ class BYTETracker(object):
         if len(dets_second) > 0:
             '''Detections'''
             for (tlbr, s) in zip(dets_second, scores_second):
-                detections_second.append(STrack(STrack.tlbr_to_tlwh(tlbr), s) if not self.args.lstm else STrack_lstm(STrack_lstm.tlbr_to_tlwh(tlbr), s))
+                detections_second.append(STrack(STrack.tlbr_to_tlwh(tlbr), s) if not self.args.lstm else STrack_lstm(STrack_lstm.tlbr_to_tlwh(tlbr), flow, s))
                 
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
         dists = matching.iou_distance(r_tracked_stracks, detections_second) if not self.args.diou else matching.diou_distance(r_tracked_stracks, detections_second, self.frame_id, self.args.time_weighted)
